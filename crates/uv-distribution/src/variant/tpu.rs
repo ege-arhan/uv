@@ -8,7 +8,7 @@ use uv_normalize::PackageName;
 use uv_pep440::Version;
 use uv_static::EnvVars;
 
-use super::{PluginApi, VendoredVariantProvider};
+use super::{PluginApi, ProviderDetection, VendoredVariantProvider};
 
 static PLUGIN_API: LazyLock<PluginApi> = LazyLock::new(|| PluginApi {
     module: "tpu_variant_provider.plugin"
@@ -20,7 +20,7 @@ static PACKAGE_NAME: LazyLock<PackageName> =
     LazyLock::new(|| "tpu-variant-provider".parse().expect("valid package name"));
 const NAMESPACE: &VariantNamespace = &VariantNamespace::from_static("tpu");
 
-static PROPERTIES: LazyLock<[SupportedVariantFeature; 1]> = LazyLock::new(detect_properties);
+static DETECTION: LazyLock<ProviderDetection> = LazyLock::new(detect_properties);
 
 /// The vendored implementation of `tpu-variant-provider` 0.1.0.
 ///
@@ -49,12 +49,12 @@ impl VendoredVariantProvider for TpuVariantProvider {
         Version::new([0, 1, 0])
     }
 
-    fn properties(&self) -> Option<&[SupportedVariantFeature]> {
-        Some(PROPERTIES.as_slice())
+    fn detect(&self) -> &ProviderDetection {
+        &DETECTION
     }
 }
 
-fn detect_properties() -> [SupportedVariantFeature; 1] {
+fn detect_properties() -> ProviderDetection {
     let force_present = std::env::var_os(EnvVars::TPU_VARIANT_PROVIDER_FORCE_PRESENT);
     let present = if let Some(value) = force_present {
         value == "1" || value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("yes")
@@ -64,10 +64,13 @@ fn detect_properties() -> [SupportedVariantFeature; 1] {
         false
     };
     let value = if present { "true" } else { "false" };
-    [SupportedVariantFeature {
-        name: VariantFeature::from_static("present"),
-        values: vec![VariantValue::from_static(value)],
-    }]
+    ProviderDetection {
+        properties: vec![SupportedVariantFeature {
+            name: VariantFeature::from_static("present"),
+            values: vec![VariantValue::from_static(value)],
+        }],
+        error: None,
+    }
 }
 
 fn has_tpu_pci_device() -> bool {
